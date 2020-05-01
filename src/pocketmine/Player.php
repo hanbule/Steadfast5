@@ -220,6 +220,8 @@ class Player extends Human implements CommandSender, InventoryHolder, IPlayer {
     const OS_TVOS = 10;
     const OS_ORBIS = 11;
     const OS_NX = 12;
+    const OS_XBOX = 13;
+    const OS_WINDOWS_PHONE = 14;
     const OS_UNKNOWN = -1;
 
     const INVENTORY_CLASSIC = 0;
@@ -1029,6 +1031,7 @@ class Player extends Human implements CommandSender, InventoryHolder, IPlayer {
 			$pk->status = PlayStatusPacket::PLAYER_SPAWN;
 			$this->dataPacket($pk);
 
+			$this->setImmobile(false);
 			$this->noDamageTicks = 60;
 			$this->spawned = true;
 			if ($this->isFirstConnect) {
@@ -2375,7 +2378,7 @@ class Player extends Human implements CommandSender, InventoryHolder, IPlayer {
 				}
 				$this->craftingType = self::CRAFTING_DEFAULT;
 				$this->currentTransaction = null;
-				// @todo добавить обычный инвентарь и броню
+				// TODO: add regular inventory and armor
 				if ($packet->windowid === $this->currentWindowId && $this->currentWindow != null) {
 					$this->server->getPluginManager()->callEvent(new InventoryCloseEvent($this->currentWindow, $this));
 					$this->removeWindow($this->currentWindow);
@@ -3610,6 +3613,8 @@ class Player extends Human implements CommandSender, InventoryHolder, IPlayer {
 		if($this->getHealth() <= 0){
 			$this->dead = true;
 		}
+
+		$this->setImmobile();
 
 		$this->server->getLogger()->info(TextFormat::AQUA . $this->username . TextFormat::WHITE . "/" . TextFormat::AQUA . $this->ip . " connected");
 
