@@ -79,7 +79,15 @@ class AvailableCommandsPacket extends PEPacket{
 			Info::PROTOCOL_351 => new BinaryStream(),
 			Info::PROTOCOL_354 => new BinaryStream(),
 			Info::PROTOCOL_360 => new BinaryStream(),
-			Info::PROTOCOL_361 => new BinaryStream()
+			Info::PROTOCOL_361 => new BinaryStream(),
+			Info::PROTOCOL_370 => new BinaryStream(),
+			Info::PROTOCOL_385 => new BinaryStream(),
+			Info::PROTOCOL_386 => new BinaryStream(),
+			Info::PROTOCOL_389 => new BinaryStream(),
+			Info::PROTOCOL_390 => new BinaryStream(),
+			Info::PROTOCOL_392 => new BinaryStream(),
+			Info::PROTOCOL_393 => new BinaryStream(),
+			Info::PROTOCOL_400 => new BinaryStream(),
 		];
 		
 		foreach ($commands as $commandName => &$commandData) { // Replace &$commandData with $commandData when alises fix for 1.2 won't be needed anymore
@@ -175,6 +183,9 @@ class AvailableCommandsPacket extends PEPacket{
 		
 		foreach ($commandsStreams as $protocol => $commandsStream) {
 			if ($protocol >= Info::PROTOCOL_280) {
+				$commandsStream->putVarInt(0);
+			}
+			if ($protocol >= Info::PROTOCOL_385) {
 				$commandsStream->putVarInt(0);
 			}
 			self::$commandsBuffer[$protocol] = $additionalDataStream->getBuffer() . $commandsStream->getBuffer();

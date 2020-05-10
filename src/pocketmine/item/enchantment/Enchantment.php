@@ -44,6 +44,7 @@ class Enchantment{
 	const TYPE_MINING_EFFICIENCY = 15;
 	const TYPE_MINING_SILK_TOUCH = 16;
 	const TYPE_MINING_DURABILITY = 17; // Unbreaking
+	const TYPE_UNBREAKING = 17; // Unbreaking
 	const TYPE_MINING_FORTUNE = 18;
 	const TYPE_BOW_POWER = 19;
 	const TYPE_BOW_KNOCKBACK = 20;
@@ -51,6 +52,10 @@ class Enchantment{
 	const TYPE_BOW_INFINITY = 22;
 	const TYPE_FISHING_FORTUNE = 23; // Luck of the Sea
 	const TYPE_FISHING_LURE = 24;
+	const TYPE_ARMOR_FROST_WALKER = 25;
+	const TYPE_MENDING = 26;
+	const TYPE_ARMOR_BINDING = 27;
+	const TYPE_VANISHING = 28;
 
 	const RARITY_COMMON = 0;
 	const RARITY_UNCOMMON = 1;
@@ -123,6 +128,9 @@ class Enchantment{
 	 * @return $this
 	 */
 	public static function getEnchantment($id){
+		if($id < 0 or $id >= self::$enchantments->getSize()){
+			return null;
+		}
 		if(isset(self::$enchantments[$id])){
 			return clone self::$enchantments[(int) $id];
 		}

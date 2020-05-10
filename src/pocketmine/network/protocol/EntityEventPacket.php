@@ -45,7 +45,9 @@ class EntityEventPacket extends PEPacket{
 	const AMBIENT_SOUND = 17;
 	const RESPAWN = 18;
 	const ENCHANT = 34;
+	const ARROW_SHAKE = 39;
 	const FEED = 57;
+	const CONSUME_TOTEM = 65;
 
 	//TODO add new events
 
@@ -67,5 +69,9 @@ class EntityEventPacket extends PEPacket{
 		/** @todo do it right */
 		$this->putSignedVarInt(0); // event data
 	}
+
+	public function pid(){
+	    return Info::ENTITY_EVENT_PACKET;
+    }
 
 }

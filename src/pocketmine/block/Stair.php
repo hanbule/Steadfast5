@@ -25,7 +25,7 @@ use pocketmine\item\Item;
 use pocketmine\math\AxisAlignedBB;
 use pocketmine\Player;
 
-abstract class Stair extends Transparent{
+abstract class Stair extends Solid{
 
 	/*
 	public function collidesWithBB(AxisAlignedBB $bb, &$list = []){
@@ -133,7 +133,7 @@ abstract class Stair extends Transparent{
 			2 => 1,
 			3 => 3,
 		];
-		$this->meta = $faces[$player->getDirection()] & 0x03;
+		$this->meta = $player !== null ? $faces[$player->getDirection()] & 0x03 : 0;
 		if(($fy > 0.5 and $face !== 1) or $face === 0){
 			$this->meta |= 0x04; //Upside-down stairs
 		}
@@ -150,5 +150,9 @@ abstract class Stair extends Transparent{
 		}else{
 			return [];
 		}
+	}
+	
+	public function isUpsideDown() {
+		return $this->meta & 0x04;
 	}
 }

@@ -41,10 +41,14 @@ use pocketmine\entity\Item as DroppedItem;
 use pocketmine\entity\Painting;
 use pocketmine\entity\PrimedTNT;
 use pocketmine\entity\projectile\BottleOEnchanting;
+use pocketmine\entity\projectile\SplashPotion;
 use pocketmine\entity\Snowball;
 use pocketmine\entity\Egg;
 use pocketmine\entity\Squid;
 use pocketmine\entity\Villager;
+use pocketmine\entity\Minecart;
+use pocketmine\entity\Boat;
+use pocketmine\entity\FishingHook;
 use pocketmine\event\HandlerList;
 use pocketmine\event\level\LevelInitEvent;
 use pocketmine\event\level\LevelLoadEvent;
@@ -79,6 +83,8 @@ use pocketmine\nbt\tag\IntTag;
 use pocketmine\nbt\tag\LongTag;
 use pocketmine\nbt\tag\ShortTag;
 use pocketmine\nbt\tag\StringTag;
+use pocketmine\network\CompressBatchedTask;
+use pocketmine\network\AdvancedSourceInterface;
 use pocketmine\network\Network;
 use pocketmine\network\protocol\BatchPacket;
 use pocketmine\network\protocol\CraftingDataPacket;
@@ -102,9 +108,15 @@ use pocketmine\scheduler\ServerScheduler;
 use pocketmine\tile\Bed;
 use pocketmine\tile\Cauldron;
 use pocketmine\tile\Chest;
+use pocketmine\tile\Dispenser;
+use pocketmine\tile\Dropper;
+use pocketmine\tile\Hopper;
 use pocketmine\tile\EnchantTable;
 use pocketmine\tile\EnderChest;
+use pocketmine\tile\FlowerPot;
 use pocketmine\tile\Furnace;
+use pocketmine\tile\PistonArm;
+use pocketmine\tile\ShulkerBox;
 use pocketmine\tile\ItemFrame;
 use pocketmine\tile\Sign;
 use pocketmine\tile\Skull;
@@ -167,6 +179,9 @@ class Server{
 	/** @var BanList */
 	private $banByName = null;
 
+	/** @var \Threaded */
+	private static $sleeper = null;
+
 	/** @var BanList */
 	private $banByIP = null;
 
@@ -217,7 +232,10 @@ class Server{
 
 	/** @var bool */
 	private $autoSave;
-	
+
+	/** @var RCON */
+	private $rcon;
+
 	/** @var bool */
 	private $autoGenerate;
 	
@@ -235,6 +253,9 @@ class Server{
 
 	/** @var LevelMetadataStore */
 	private $levelMetadata;
+
+	/** @var AdvancedSourceInterface */
+	private $mainInterface;
 
 	/** @var Network */
 	private $network;
@@ -278,7 +299,6 @@ class Server{
 	private $animalLimit;
 	private $useMonster ;
 	private $monsterLimit;
-		
 
 	public $packetMaker = null;
 	
@@ -307,7 +327,7 @@ class Server{
 	public function removeSpawnedEntity($entity) {
 		unset($this->spawnedEntity[$entity->getId()]);
 	}
-	
+
 	public function isUseAnimal() {
 		return $this->useAnimal;
 	}
@@ -328,7 +348,7 @@ class Server{
 	 * @return string
 	 */
 	public function getName(){
-		return "PocketMine-Steadfast";
+		return "Steadfast5";
 	}
 
 	/**
@@ -426,7 +446,7 @@ class Server{
 	 * @return string
 	 */
 	public function getServerName(){
-		return $this->getConfigString("motd", "Minecraft: PE Server");
+		return $this->getConfigString("motd", "Minecraft: Bedrock Edition Server");
 	}
 
 	/**
@@ -634,7 +654,7 @@ class Server{
 	 * @return string
 	 */
 	public function getMotd(){
-		return $this->getConfigString("motd", "Minecraft: PE Server");
+		return $this->getConfigString("motd", "Minecraft: Bedrock Edition Server");
 	}
 
 	/**
@@ -827,7 +847,7 @@ class Server{
 				rename($path . "$name.dat", $path . "$name.dat.bak");
 				$this->logger->warning("Corrupted data found for \"" . $name . "\", creating new profile");
 			}
-		}else{
+		} else {
 			$this->logger->notice("Player data not found for \"" . $name . "\", creating new profile");
 		}
 		$spawn = $this->getDefaultLevel()->getSafeSpawn();
@@ -886,7 +906,7 @@ class Server{
 			$nbt->setData($nbtTag);
 			if($async){
 				$this->getScheduler()->scheduleAsyncTask(new FileWriteTask($this->getDataPath() . "players/" . strtolower($name) . ".dat", $nbt->writeCompressed()));
-			}else{
+			} else {
 				file_put_contents($this->getDataPath() . "players/" . strtolower($name) . ".dat", $nbt->writeCompressed());
 			}
 		}catch(\Exception $e){
@@ -921,6 +941,12 @@ class Server{
 		}
 
 		return $found;
+	}
+
+	public static function microSleep(int $microseconds){
+		Server::$sleeper->synchronized(function(int $ms){
+			Server::$sleeper->wait($ms);
+		}, $microseconds);
 	}
 
 	/**
@@ -1078,7 +1104,7 @@ class Server{
 		}
 		if($this->isLevelLoaded($name)){
 			return true;
-		}elseif(!$this->isLevelGenerated($name)){
+		} elseif(!$this->isLevelGenerated($name)){
 			$this->logger->notice("Level \"" . $name . "\" not found");
 
 			return false;
@@ -1205,7 +1231,7 @@ class Server{
 				if($level->import() === false){ //Try importing a world
 					return false;
 				}
-			}else{
+			} else {
 				return false;
 			}*/
 		}
@@ -1235,20 +1261,20 @@ class Server{
 	 * @return mixed
 	 */
 	public function getAdvancedProperty($variable, $defaultValue = null){
-			$vars = explode(".", $variable);
-			$base = array_shift($vars);
-			if($this->softConfig->exists($base)){
-					$base = $this->softConfig->get($base);
-				}else{
-					return $defaultValue;
+		$vars = explode(".", $variable);
+		$base = array_shift($vars);
+		if($this->softConfig->exists($base)){
+			$base = $this->softConfig->get($base);
+		} else {
+			return $defaultValue;
 		}
 
 		while(count($vars) > 0){
-					$baseKey = array_shift($vars);
-					if(is_array($base) and isset($base[$baseKey])){
-							$base = $base[$baseKey];
-						}else{
-							return $defaultValue;
+			$baseKey = array_shift($vars);
+			if(is_array($base) and isset($base[$baseKey])){
+				$base = $base[$baseKey];
+			} else {
+				return $defaultValue;
 			}
 		}
 
@@ -1309,7 +1335,7 @@ class Server{
 		$v = getopt("", ["$variable::"]);
 		if(isset($v[$variable])){
 			$value = $v[$variable];
-		}else{
+		} else {
 			$value = $this->properties->exists($variable) ? $this->properties->get($variable) : $defaultValue;
 		}
 
@@ -1343,7 +1369,7 @@ class Server{
 	public function getPluginCommand($name){
 		if(($command = $this->commandMap->getCommand($name)) instanceof PluginIdentifiableCommand){
 			return $command;
-		}else{
+		} else {
 			return null;
 		}
 	}
@@ -1449,7 +1475,7 @@ class Server{
 				$commands = [];
 				if(is_array($value)){
 					$commands = $value;
-				}else{
+				} else {
 					$commands[] = $value;
 				}
 
@@ -1483,6 +1509,7 @@ class Server{
 		self::$serverId =  mt_rand(0, PHP_INT_MAX);
 
 		$this->autoloader = $autoloader;
+		self::$sleeper = new \Threaded;
 		$this->logger = $logger;
 		$this->filePath = $filePath;
 		if(!file_exists($dataPath . "worlds/")){
@@ -1503,7 +1530,7 @@ class Server{
 		$this->console = new CommandReader();
 
 		$version = new VersionString($this->getPocketMineVersion());
-		$this->logger->info("Starting Minecraft: PE server version " . TextFormat::AQUA . $this->getVersion());
+		$this->logger->info("Starting Minecraft: Bedrock Edition server version " . TextFormat::AQUA . $this->getVersion());
 
 		$this->logger->info("Loading pocketmine-soft.yml...");
 		if(!file_exists($this->dataPath . "pocketmine-soft.yml")){
@@ -1521,7 +1548,7 @@ class Server{
 
 		$this->logger->info("Loading server properties...");
 		$this->properties = new Config($this->dataPath . "server.properties", Config::PROPERTIES, [
-			"motd" => "Minecraft: PE Server",
+			"motd" => "A Steadfast5 Minecraft: Bedrock Edition Server",
 			"server-port" => 19132,
 			"proxy-port" => 10305,
 			"memory-limit" => "256M",
@@ -1546,8 +1573,8 @@ class Server{
 			"enable-rcon" => false,
 			"rcon.password" => substr(base64_encode(@Utils::getRandomBytes(20, false)), 3, 10),
 			"auto-save" => true,
-			"auto-generate" => false,
-			"save-player-data" => false,
+			"auto-generate" => true,
+			"save-player-data" => true,
 			"use-proxy" => false,
 			"use-raklib" => true,
 			"time-update" => true,
@@ -1580,12 +1607,12 @@ class Server{
 
 		$this->maxPlayers = $this->getConfigInt("max-players", 20);
 		$this->setAutoSave($this->getConfigBoolean("auto-save", true));
-		$this->setAutoGenerate($this->getConfigBoolean("auto-generate", false));
-		$this->setSavePlayerData($this->getConfigBoolean("save-player-data", false));
+		$this->setAutoGenerate($this->getConfigBoolean("auto-generate", true));
+		$this->setSavePlayerData($this->getConfigBoolean("save-player-data", true));
 		
-		$this->useAnimal = $this->getConfigBoolean("spawn-animals", false);
+		$this->useAnimal = $this->getConfigBoolean("spawn-animals", true);
 		$this->animalLimit = $this->getConfigInt("animals-limit", 0);
-		$this->useMonster = $this->getConfigBoolean("spawn-mobs", false);
+		$this->useMonster = $this->getConfigBoolean("spawn-mobs", true);
 		$this->monsterLimit = $this->getConfigInt("mobs-limit", 0);
 		$this->isUseEncrypt = $this->getConfigBoolean("use-encrypt", false);
 
@@ -1596,7 +1623,7 @@ class Server{
 				$this->logger->warning($this->getName() . " may not work right with less than 128MB of RAM");
 			}
 			@ini_set("memory_limit", $memory);
-		}else{
+		} else {
 			$this->setConfigString("memory-limit", "256M");
 		}
 		$this->network = new Network($this);
@@ -1617,7 +1644,7 @@ class Server{
 			@\cli_set_process_title($this->getName() . " " . $this->getPocketMineVersion());
 		}
 
-		$this->logger->info("Starting Minecraft PE server on " . ($this->getIp() === "" ? "*" : $this->getIp()) . ":" . $this->getPort());
+		$this->logger->info("Starting Minecraft Bedrock Edition server on " . ($this->getIp() === "" ? "*" : $this->getIp()) . ":" . $this->getPort());
 		define("BOOTUP_RANDOM", @Utils::getRandomBytes(16));
 		$this->serverID = Utils::getMachineUniqueId($this->getIp() . $this->getPort());
 
@@ -1681,7 +1708,7 @@ class Server{
 					if(substr($download, 0, 4) === "http"){
 						$this->getLogger()->info("Downloading ". $plugin);
 						file_put_contents($path, Utils::getURL($download));
-					}else{
+					} else {
 						file_put_contents($path, file_get_contents($download));
 					}
 					$loadNew = true;
@@ -1707,7 +1734,7 @@ class Server{
 					$options = [
 						"preset" => implode(":", $options),
 					];
-				}else{
+				} else {
 					$options = [];
 				}
 
@@ -1761,7 +1788,10 @@ class Server{
 		
 		$this->start();
 	}
-	
+
+	/**
+	 * @return AdvancedSourceInterface
+	 */
 	public function getMainInterface() {
 		return $this->mainInterface;
 	}
@@ -1915,11 +1945,54 @@ class Server{
 		foreach ($packets as $pk) {
 			if ($playersCount < 2) {
 				foreach ($players as $p) {
+					$pk->setDeviceId($p->getDeviceOS());
 					$p->dataPacket($pk);
 				}
 			} else {
 				Server::broadcastPacket($players, $pk);
 			}
+		}
+	}
+
+	/**
+	 * Broadcasts a list of packets in a batch to a list of players
+	 *
+	 * @param Player[]     $players
+	 * @param DataPacket[] $packets
+	 * @param bool         $forceSync
+	 * @param bool         $immediate
+	 */
+	public function batchPacket(array $players, array $packets, bool $immediate = false){
+		if(empty($packets)){
+			throw new \InvalidArgumentException("Cannot send empty batch");
+		}
+
+		Timings::$playerNetworkTimer->startTiming();
+		$targets = array_filter($players, function(Player $player) : bool{ return $player->isConnected(); });
+
+		if(!empty($targets)){
+			$pk = new BatchPacket();
+			foreach($packets as $p){
+				$pk->addPacket($p);
+			}
+
+			if(Network::$BATCH_THRESHOLD >= 0 and strlen($pk->payload) >= Network::$BATCH_THRESHOLD){
+				$pk->setCompressionLevel($this->networkCompressionLevel);
+			} else {
+				$pk->setCompressionLevel(0); //Do not compress packets under the threshold
+			}
+
+			$this->broadcastPacketsCallback($pk, $targets, $immediate);
+		}
+		Timings::$playerNetworkTimer->stopTiming();
+	}
+	/**
+	 * @param BatchPacket $pk
+	 * @param Player[]    $players
+	 */
+	public function broadcastPacketsCallback(BatchPacket $pk, array $players){
+		foreach ($players as $i) {
+			$i->dataPacket($pk);
 		}
 	}
 
@@ -1994,7 +2067,7 @@ class Server{
 			if(is_string($message) and strlen($message) > 0){
 				$sender->sendMessage(TextFormat::RED.$message);
 			}
-		}else{
+		} else {
 			$sender->sendMessage("Unknown command. Type \"help\" for help.");
 		}
 
@@ -2023,7 +2096,7 @@ class Server{
 				$this->logger->warning($this->getName() . " may not work right with less than 256MB of RAM");
 			}
 			@ini_set("memory_limit", $memory);
-		}else{
+		} else {
 			$this->setConfigString("memory-limit", "256M");
 		}
 
@@ -2215,6 +2288,9 @@ class Server{
 		$this->crashDump();
 	}
 
+	/**
+	 * @return void
+	 */
 	public function crashDump(){
 		if($this->isRunning === false){
 			return;
@@ -2243,7 +2319,7 @@ class Server{
 				if($p instanceof Plugin and !($p->getPluginLoader() instanceof PharPluginLoader)){
 					$report = false;
 				}
-			}elseif(\Phar::running(true) == ""){
+			} elseif(\Phar::running(true) == ""){
 				$report = false;
 			}
 			if($dump->getData()["error"]["type"] === "E_PARSE" or $dump->getData()["error"]["type"] === "E_COMPILE_ERROR"){
@@ -2314,6 +2390,7 @@ class Server{
 		foreach ($players as $p){
 			$protocol = $p->getPlayerProtocol();
 			if (!isset($readyPackets[$protocol])) {
+				$pk->setDeviceId($p->getDeviceOS());
 				$pk->encode($protocol, $p->getSubClientId());
 				$batch = new BatchPacket();
 				$batch->payload = zlib_encode(Binary::writeVarInt(strlen($pk->getBuffer())) . $pk->getBuffer(), ZLIB_ENCODING_DEFLATE, 7);
@@ -2351,9 +2428,9 @@ class Server{
 			foreach($ev->getRecipies() as $recipe){
 				if($recipe instanceof ShapedRecipe){
 					$pk->addShapedRecipe($recipe);
-				}elseif($recipe instanceof ShapelessRecipe){
+				} elseif($recipe instanceof ShapelessRecipe){
 					$pk->addShapelessRecipe($recipe);
-				}elseif($recipe instanceof FurnaceRecipe) {
+				} elseif($recipe instanceof FurnaceRecipe) {
 					$pk->addFurnaceRecipe($recipe);
 				}
 			}
@@ -2396,7 +2473,7 @@ class Server{
 			foreach($this->getOnlinePlayers() as $index => $player){
 				if($player->isOnline()){
 					$player->save();
-				}elseif(!$player->isConnected()){
+				} elseif(!$player->isConnected()){
 					$this->removePlayer($player);
 				}
 			}
@@ -2476,6 +2553,9 @@ class Server{
 	
 		//Timings::$connectionTimer->startTiming();
 		$this->network->processInterfaces();
+		if($this->rcon !== null){
+			$this->rcon->check();
+		}
 		//Timings::$connectionTimer->stopTiming();
 
 		//Timings::$schedulerTimer->startTiming();
@@ -2536,7 +2616,11 @@ class Server{
 	}
 
 	private function registerEntities(){
+		Entity::registerEntity(Minecart::class);
+		Entity::registerEntity(Boat::class);
+		Entity::registerEntity(FishingHook::class);
 		Entity::registerEntity(Arrow::class);
+		Entity::registerEntity(SplashPotion::class);
 		Entity::registerEntity(DroppedItem::class);
 		Entity::registerEntity(FallingSand::class);
 		Entity::registerEntity(PrimedTNT::class);
@@ -2581,10 +2665,15 @@ class Server{
 		Tile::registerTile(EnchantTable::class);
 		Tile::registerTile(Skull::class);
 		Tile::registerTile(FlowerPot::class);
-        Tile::registerTile(EnderChest::class);
+		Tile::registerTile(EnderChest::class);
 		Tile::registerTile(Bed::class);
 		Tile::registerTile(Cauldron::class);
+		Tile::registerTile(Dispenser::class);
+		Tile::registerTile(PistonArm::class);
+		Tile::registerTile(ShulkerBox::class);
 		Tile::registerTile(ItemFrame::class);
+		Tile::registerTile(Dropper::class);
+		Tile::registerTile(Hopper::class);
 		Tile::registerTile(Beacon::class);
 		Tile::registerTile(Banner::class);
 	}
@@ -2622,6 +2711,10 @@ class Server{
 	
 	public function getServerToken() {	
 		return $this->serverToken;
+	}
+	
+	public function addLevel($level) {
+		$this->levels[$level->getId()] = $level;
 	}
 	
 	public function getRaklibServer() {

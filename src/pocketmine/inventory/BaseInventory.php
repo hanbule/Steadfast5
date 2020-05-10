@@ -60,7 +60,7 @@ abstract class BaseInventory implements Inventory{
 	 */
 	public function __construct(InventoryHolder $holder, InventoryType $type, array $items = [], $overrideSize = null, $overrideTitle = null){
 		$this->holder = $holder;
-
+		
 		$this->type = $type;		
 		if($overrideSize !== null){
 			$this->size = (int) $overrideSize;
@@ -162,7 +162,7 @@ abstract class BaseInventory implements Inventory{
 	public function contains(Item $item){
 		$count = max(1, $item->getCount());
 		$checkDamage = $item->getDamage() === null ? false : true;
-		$checkTags = ($item->getId() == Item::ARROW || $item->hasCompound());
+		$checkTags = $item->getId() != Item::ARROW && $item->hasCompound();
 		foreach($this->getContents() as $i){
 			if($item->equals($i, $checkDamage, $checkTags)){
 				$count -= $i->getCount();
@@ -222,22 +222,31 @@ abstract class BaseInventory implements Inventory{
 
 		return -1;
 	}
+	
+	public function firstNotEmpty() {
+		for ($i = 0; $i < $this->size; $i++) {
+			if ($this->getItem($i)->getId() !== Item::AIR) {
+				return $i;
+			}
+		}
+		return -1;
+	}
 
 	public function canAddItem(Item $item){
-		$item = clone $item;
+		$count = clone $item->getCount();
 		$checkDamage = $item->getDamage() === null ? false : true;
 		$checkTags = $item->hasCompound();
 		for($i = 0; $i < $this->getSize(); ++$i){
 			$slot = $this->getItem($i);
-			if($item->equals($slot, $checkDamage, $checkTags)){
+			if($item->deepEquals($slot, $checkDamage, $checkTags)){
 				if(($diff = $slot->getMaxStackSize() - $slot->getCount()) > 0){
-					$item->setCount($item->getCount() - $diff);
+					$count -= $diff;
 				}
 			}elseif($slot->getId() === Item::AIR){
-				$item->setCount($item->getCount() - $this->getMaxStackSize());
+				$count -= $this->getMaxStackSize();
 			}
 
-			if($item->getCount() <= 0){
+			if($count <= 0){
 				return true;
 			}
 		}
@@ -269,7 +278,7 @@ abstract class BaseInventory implements Inventory{
 
 			$itemCount = $item->getCount();
 			foreach($itemSlots as $index => $slot){
-				if($slot->equals($item) && $itemCount < $item->getMaxStackSize()){
+				if($slot->deepEquals($item) && $itemCount < $item->getMaxStackSize()){
 					$slotCount = $slot->getCount();
 					$amount = min($item->getMaxStackSize() - $itemCount, $slotCount, $this->getMaxStackSize());
 					if($amount > 0){
@@ -328,7 +337,7 @@ abstract class BaseInventory implements Inventory{
 			}
 
 			$checkDamage = $slot->getDamage() === null ? false : true;
-			$checkCompound = $slot->getId() == Item::ARROW || $slot->hasCompound();
+			$checkCompound = $slot->getId() != Item::ARROW && $slot->hasCompound();
 			foreach($itemSlots as $index => $slot){
 				if($slot->equals($item, $checkDamage, $checkCompound)){
 					$amount = min($item->getCount(), $slot->getCount());
